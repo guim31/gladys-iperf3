@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-17
+
 ### Added
 
 - One device per iperf3 server of the configuration (`name=address:port`, 10 at most): download
@@ -24,4 +26,5 @@ the notes of the version's GitHub Release.
   "Measure an iperf3 server" returning the speeds.
 - English, French, German and Spanish texts and documentation.
 
-[Unreleased]: https://github.com/guim31/gladys-iperf3/commits/main
+[Unreleased]: https://github.com/guim31/gladys-iperf3/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-iperf3/releases/tag/v1.0.0
