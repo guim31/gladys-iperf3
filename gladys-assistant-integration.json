@@ -1,176 +1,591 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "iPerf3",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Measure your local network speed (Wi-Fi, powerline, NAS link) against your own iperf3 servers.",
+    "fr": "Mesurez le débit de votre réseau local (Wi-Fi, CPL, NAS) vers vos propres serveurs iperf3.",
+    "de": "Miss die Geschwindigkeit deines Heimnetzes (WLAN, Powerline, NAS) zu deinen iperf3-Servern.",
+    "es": "Mida la velocidad de su red local (Wi-Fi, PLC, NAS) hacia sus propios servidores iperf3."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-iperf3:1.0.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-iperf3/main/cover.png",
+  "categories": ["network"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "How it works",
+        "fr": "Fonctionnement",
+        "de": "Funktionsweise",
+        "es": "Funcionamiento"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Run an iperf3 server (iperf3 -s) on the machines to measure: NAS, PC, a device behind Wi-Fi or powerline. Gladys measures upload then download, one server at a time, and creates one device per server.",
+        "fr": "Lancez un serveur iperf3 (iperf3 -s) sur les machines à mesurer : NAS, PC, appareil derrière le Wi-Fi ou le CPL. Gladys mesure le débit montant puis descendant, un serveur à la fois, et crée un appareil par serveur.",
+        "de": "Starte einen iperf3-Server (iperf3 -s) auf den Geräten, die du messen willst: NAS, PC, ein Gerät hinter WLAN oder Powerline. Gladys misst Upload und dann Download, einen Server nach dem anderen, und legt pro Server ein Gerät an.",
+        "es": "Inicie un servidor iperf3 (iperf3 -s) en los equipos que quiera medir: NAS, PC, un equipo detrás del Wi-Fi o del PLC. Gladys mide la subida y luego la descarga, un servidor a la vez, y crea un dispositivo por servidor."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://iperf.fr/",
+          "label": {
+            "en": "iperf3 downloads",
+            "fr": "Télécharger iperf3",
+            "de": "iperf3 herunterladen",
+            "es": "Descargar iperf3"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "key": "servers",
+      "type": "string",
       "required": false,
-      "default": "celsius",
+      "label": {
+        "en": "iperf3 servers",
+        "fr": "Serveurs iperf3",
+        "de": "iperf3-Server",
+        "es": "Servidores iperf3"
+      },
+      "description": {
+        "en": "Separated by commas: address, or name=address, with :port when it is not 5201. 10 servers at most.",
+        "fr": "Séparés par des virgules : adresse, ou nom=adresse, avec :port s'il ne vaut pas 5201. 10 serveurs au plus.",
+        "de": "Durch Kommas getrennt: Adresse oder Name=Adresse, mit :Port, wenn er nicht 5201 ist. Höchstens 10 Server.",
+        "es": "Separados por comas: dirección, o nombre=dirección, con :puerto si no es 5201. 10 servidores como máximo."
+      },
+      "placeholder": {
+        "en": "NAS=192.168.1.10, Office=192.168.1.20:5202",
+        "fr": "NAS=192.168.1.10, Bureau=192.168.1.20:5202",
+        "de": "NAS=192.168.1.10, Büro=192.168.1.20:5202",
+        "es": "NAS=192.168.1.10, Oficina=192.168.1.20:5202"
+      }
+    },
+    {
+      "key": "interval_hours",
+      "type": "select",
+      "required": false,
+      "default": "6",
+      "label": {
+        "en": "Automatic measurement",
+        "fr": "Mesure automatique",
+        "de": "Automatische Messung",
+        "es": "Medición automática"
+      },
+      "description": {
+        "en": "Each measurement loads the link for a few seconds: keep it occasional.",
+        "fr": "Chaque mesure charge le lien quelques secondes : gardez-la occasionnelle.",
+        "de": "Jede Messung lastet die Verbindung einige Sekunden aus: Miss lieber selten.",
+        "es": "Cada medición carga el enlace unos segundos: manténgala ocasional."
+      },
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "0",
+          "label": {
+            "en": "Never (on demand only)",
+            "fr": "Jamais (à la demande)",
+            "de": "Nie (nur auf Anfrage)",
+            "es": "Nunca (solo a petición)"
+          }
+        },
+        {
+          "value": "1",
+          "label": {
+            "en": "Every hour",
+            "fr": "Toutes les heures",
+            "de": "Jede Stunde",
+            "es": "Cada hora"
+          }
+        },
+        {
+          "value": "2",
+          "label": {
+            "en": "Every 2 hours",
+            "fr": "Toutes les 2 heures",
+            "de": "Alle 2 Stunden",
+            "es": "Cada 2 horas"
+          }
+        },
+        {
+          "value": "3",
+          "label": {
+            "en": "Every 3 hours",
+            "fr": "Toutes les 3 heures",
+            "de": "Alle 3 Stunden",
+            "es": "Cada 3 horas"
+          }
+        },
+        {
+          "value": "6",
+          "label": {
+            "en": "Every 6 hours",
+            "fr": "Toutes les 6 heures",
+            "de": "Alle 6 Stunden",
+            "es": "Cada 6 horas"
+          }
+        },
+        {
+          "value": "12",
+          "label": {
+            "en": "Every 12 hours",
+            "fr": "Toutes les 12 heures",
+            "de": "Alle 12 Stunden",
+            "es": "Cada 12 horas"
+          }
+        },
+        {
+          "value": "24",
+          "label": {
+            "en": "Once a day",
+            "fr": "Une fois par jour",
+            "de": "Einmal am Tag",
+            "es": "Una vez al día"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
-      "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
-      },
+      "key": "protocol",
+      "type": "select",
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "tcp",
+      "label": {
+        "en": "Protocol",
+        "fr": "Protocole",
+        "de": "Protokoll",
+        "es": "Protocolo"
+      },
+      "description": {
+        "en": "TCP measures the real throughput. UDP sends at a fixed bitrate and measures jitter and packet loss.",
+        "fr": "TCP mesure le débit réel. UDP envoie à un débit fixe et mesure la gigue et les pertes de paquets.",
+        "de": "TCP misst den echten Durchsatz. UDP sendet mit fester Bitrate und misst Jitter und Paketverlust.",
+        "es": "TCP mide el caudal real. UDP envía a una tasa fija y mide el jitter y la pérdida de paquetes."
+      },
+      "options": [
+        {
+          "value": "tcp",
+          "label": {
+            "en": "TCP (throughput)",
+            "fr": "TCP (débit)",
+            "de": "TCP (Durchsatz)",
+            "es": "TCP (caudal)"
+          }
+        },
+        {
+          "value": "udp",
+          "label": {
+            "en": "UDP (jitter and loss)",
+            "fr": "UDP (gigue et pertes)",
+            "de": "UDP (Jitter und Verlust)",
+            "es": "UDP (jitter y pérdidas)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "duration",
+      "type": "number",
+      "required": false,
+      "default": 5,
+      "min": 3,
+      "max": 20,
+      "label": {
+        "en": "Duration per direction (s)",
+        "fr": "Durée par sens (s)",
+        "de": "Dauer pro Richtung (s)",
+        "es": "Duración por sentido (s)"
+      },
+      "description": {
+        "en": "Longer is steadier, but loads the network longer.",
+        "fr": "Plus long est plus stable, mais charge le réseau plus longtemps.",
+        "de": "Länger ist stabiler, belastet das Netz aber länger.",
+        "es": "Más largo es más estable, pero carga la red más tiempo."
+      }
+    },
+    {
+      "key": "streams",
+      "type": "number",
+      "required": false,
+      "default": 1,
+      "min": 1,
+      "max": 8,
+      "label": {
+        "en": "Parallel streams",
+        "fr": "Flux parallèles",
+        "de": "Parallele Streams",
+        "es": "Flujos paralelos"
+      },
+      "description": {
+        "en": "More streams fill fast links (2.5 Gbit/s and up) better.",
+        "fr": "Plus de flux remplissent mieux les liens rapides (2,5 Gbit/s et plus).",
+        "de": "Mehr Streams lasten schnelle Leitungen (ab 2,5 Gbit/s) besser aus.",
+        "es": "Más flujos aprovechan mejor los enlaces rápidos (2,5 Gbit/s o más)."
+      }
+    },
+    {
+      "key": "udp_bitrate",
+      "type": "number",
+      "required": false,
+      "default": 100,
+      "min": 1,
+      "max": 10000,
+      "label": {
+        "en": "UDP bitrate (Mbit/s)",
+        "fr": "Débit UDP (Mbit/s)",
+        "de": "UDP-Bitrate (Mbit/s)",
+        "es": "Tasa UDP (Mbit/s)"
+      },
+      "description": {
+        "en": "UDP only: the bitrate sent. Above what the link carries, the loss rises.",
+        "fr": "UDP seulement : le débit envoyé. Au-delà de ce que le lien supporte, les pertes montent.",
+        "de": "Nur UDP: die gesendete Bitrate. Über dem, was die Leitung schafft, steigt der Verlust.",
+        "es": "Solo UDP: la tasa enviada. Por encima de lo que admite el enlace, aumentan las pérdidas."
+      }
+    },
+    {
+      "key": "low_speed_threshold",
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "min": 0,
+      "max": 100000,
+      "label": {
+        "en": "Low speed threshold (Mbit/s)",
+        "fr": "Seuil de débit faible (Mbit/s)",
+        "de": "Schwelle für niedrige Geschwindigkeit (Mbit/s)",
+        "es": "Umbral de velocidad baja (Mbit/s)"
+      },
+      "description": {
+        "en": "The \"Speed below the threshold\" trigger fires when a speed drops below it. 0 = off.",
+        "fr": "Le déclencheur « Débit sous le seuil » part quand un débit passe en dessous. 0 = désactivé.",
+        "de": "Der Auslöser „Geschwindigkeit unter der Schwelle“ startet, wenn ein Wert darunter fällt. 0 = aus.",
+        "es": "El activador «Velocidad bajo el umbral» se dispara cuando una velocidad baja de él. 0 = desactivado."
+      }
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "required": false,
+      "default": "fr",
+      "label": {
+        "en": "Language of the names",
+        "fr": "Langue des noms",
+        "de": "Sprache der Namen",
+        "es": "Idioma de los nombres"
+      },
+      "description": {
+        "en": "Language of the feature names and of the messages sent by the integration.",
+        "fr": "Langue des noms de fonctionnalités et des messages envoyés par l'intégration.",
+        "de": "Sprache der Funktionsnamen und der Nachrichten der Integration.",
+        "es": "Idioma de los nombres de las funciones y de los mensajes de la integración."
+      },
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
+      "key": "measure_now",
+      "label": {
+        "en": "Measure all servers now",
+        "fr": "Mesurer tous les serveurs",
+        "de": "Alle Server jetzt messen",
+        "es": "Medir todos los servidores"
+      },
+      "timeout_seconds": 120
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "server_unreachable",
+      "label": {
+        "en": "iperf3 server unreachable",
+        "fr": "Serveur iperf3 injoignable",
+        "de": "iperf3-Server nicht erreichbar",
+        "es": "Servidor iperf3 inaccesible"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "A measurement could not reach the server, after it last answered (once per outage).",
+        "fr": "Une mesure n'a pas pu joindre le serveur, alors qu'il répondait (une fois par panne).",
+        "de": "Eine Messung konnte den Server nicht erreichen, nachdem er zuletzt antwortete (einmal pro Ausfall).",
+        "es": "Una medición no pudo alcanzar el servidor, que antes respondía (una vez por corte)."
       },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
+          "label": {
+            "en": "iperf3 server",
+            "fr": "Serveur iperf3",
+            "de": "iperf3-Server",
+            "es": "Servidor iperf3"
+          }
+        }
+      ],
+      "variables": [
+        {
+          "key": "name",
+          "type": "string",
+          "label": {
+            "en": "Server name",
+            "fr": "Nom du serveur",
+            "de": "Servername",
+            "es": "Nombre del servidor"
+          }
         },
         {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
+          "key": "address",
+          "type": "string",
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "de": "Adresse",
+            "es": "Dirección"
+          }
+        },
+        {
+          "key": "reason",
+          "type": "string",
+          "label": {
+            "en": "Reason",
+            "fr": "Raison",
+            "de": "Grund",
+            "es": "Motivo"
+          }
+        }
+      ]
+    },
+    {
+      "key": "speed_low",
+      "label": {
+        "en": "Speed below the threshold",
+        "fr": "Débit sous le seuil",
+        "de": "Geschwindigkeit unter der Schwelle",
+        "es": "Velocidad bajo el umbral"
+      },
+      "description": {
+        "en": "A measured speed drops below the threshold of the configuration (once, until it goes back up).",
+        "fr": "Un débit mesuré passe sous le seuil de la configuration (une fois, jusqu'à ce qu'il remonte).",
+        "de": "Eine gemessene Geschwindigkeit fällt unter die Schwelle der Konfiguration (einmal, bis sie wieder steigt).",
+        "es": "Una velocidad medida baja del umbral de la configuración (una vez, hasta que vuelva a subir)."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "iperf3 server",
+            "fr": "Serveur iperf3",
+            "de": "iperf3-Server",
+            "es": "Servidor iperf3"
+          }
+        },
+        {
+          "key": "direction",
+          "type": "select",
+          "label": {
+            "en": "Direction",
+            "fr": "Sens",
+            "de": "Richtung",
+            "es": "Sentido"
+          },
           "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
+            {
+              "value": "download",
+              "label": {
+                "en": "Download",
+                "fr": "Descendant",
+                "de": "Download",
+                "es": "Descarga"
+              }
+            },
+            {
+              "value": "upload",
+              "label": {
+                "en": "Upload",
+                "fr": "Montant",
+                "de": "Upload",
+                "es": "Subida"
+              }
+            }
           ]
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "name",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Server name",
+            "fr": "Nom du serveur",
+            "de": "Servername",
+            "es": "Nombre del servidor"
+          }
+        },
+        {
+          "key": "speed_mbps",
+          "type": "number",
+          "label": {
+            "en": "Speed (Mbit/s)",
+            "fr": "Débit (Mbit/s)",
+            "de": "Geschwindigkeit (Mbit/s)",
+            "es": "Velocidad (Mbit/s)"
+          }
+        },
+        {
+          "key": "threshold_mbps",
+          "type": "number",
+          "label": {
+            "en": "Threshold (Mbit/s)",
+            "fr": "Seuil (Mbit/s)",
+            "de": "Schwelle (Mbit/s)",
+            "es": "Umbral (Mbit/s)"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "run_measurement",
+      "label": {
+        "en": "Measure an iperf3 server",
+        "fr": "Mesurer un serveur iperf3",
+        "de": "iperf3-Server messen",
+        "es": "Medir un servidor iperf3"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "Measures the server now and returns the speeds for the next steps of the scene.",
+        "fr": "Mesure le serveur maintenant et renvoie les débits pour les étapes suivantes de la scène.",
+        "de": "Misst den Server sofort und gibt die Geschwindigkeiten an die nächsten Schritte der Szene weiter.",
+        "es": "Mide el servidor ahora y devuelve las velocidades para los pasos siguientes de la escena."
+      },
+      "timeout_seconds": 120,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "iperf3 server",
+            "fr": "Serveur iperf3",
+            "de": "iperf3-Server",
+            "es": "Servidor iperf3"
+          },
           "required": true
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "success",
+          "type": "number",
+          "label": {
+            "en": "Succeeded (1 = yes, 0 = no)",
+            "fr": "Réussie (1 = oui, 0 = non)",
+            "de": "Erfolgreich (1 = ja, 0 = nein)",
+            "es": "Correcta (1 = sí, 0 = no)"
+          }
+        },
+        {
+          "key": "download_mbps",
+          "type": "number",
+          "label": {
+            "en": "Download (Mbit/s)",
+            "fr": "Débit descendant (Mbit/s)",
+            "de": "Download (Mbit/s)",
+            "es": "Descarga (Mbit/s)"
+          }
+        },
+        {
+          "key": "upload_mbps",
+          "type": "number",
+          "label": {
+            "en": "Upload (Mbit/s)",
+            "fr": "Débit montant (Mbit/s)",
+            "de": "Upload (Mbit/s)",
+            "es": "Subida (Mbit/s)"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
+      "key": "speeds",
+      "label": {
+        "en": "Local network speed",
+        "fr": "Débit du réseau local",
+        "de": "Heimnetz-Geschwindigkeit",
+        "es": "Velocidad de la red local"
+      },
       "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+        "en": "The last iperf3 speeds of one or all servers, with a button to measure again.",
+        "fr": "Les derniers débits iperf3 d'un serveur ou de tous, avec un bouton pour remesurer.",
+        "de": "Die letzten iperf3-Werte eines oder aller Server, mit einer Schaltfläche zum Messen.",
+        "es": "Las últimas velocidades iperf3 de uno o todos los servidores, con un botón para medir."
       },
       "icon": "activity",
+      "settings": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "iperf3 server",
+            "fr": "Serveur iperf3",
+            "de": "iperf3-Server",
+            "es": "Servidor iperf3"
+          },
+          "description": {
+            "en": "Leave empty to list every server.",
+            "fr": "Laissez vide pour lister tous les serveurs.",
+            "de": "Leer lassen, um alle Server aufzulisten.",
+            "es": "Déjelo vacío para listar todos los servidores."
+          }
+        }
+      ],
       "action_timeout_seconds": 15
     }
   ]

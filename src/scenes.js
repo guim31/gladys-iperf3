@@ -1,41 +1,30 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
+// Scene action (manifest `scene_actions`, Gladys 5.1+): `run_measurement`.
 //
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
+// Measures one server now (before any scheduled measurement waiting in the
+// queue) and returns the speeds, for the next steps of the scene: "Continue
+// only if" on `success`, a message with {{download_mbps}}...
 //
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+// Outputs are numbers (1/0 for success), not booleans: the core's "Continue
+// only if" compares with ===, and its value field only produces numbers and
+// strings (Gladys 5.2.0). A failed measurement is an output, not an error, so
+// the scene can react to it.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
-
-const logger = createLogger({ name: 'scenes' });
-
 export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
+  async run_measurement(monitor, { fields }) {
+    const server = monitor.serverOfDevice(fields.device);
+    if (!server) {
+      throw new Error('This iperf3 server is no longer in the configuration');
+    }
+    const result = await monitor.enqueue(server, { priority: true });
+    if (!result?.ok) {
+      return { success: 0 };
+    }
+    return {
+      success: 1,
+      download_mbps: result.values.download,
+      upload_mbps: result.values.upload,
+    };
   },
 };
