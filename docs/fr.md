@@ -79,7 +79,7 @@ boutons lancent la mesure en arrière-plan ; le widget se met à jour à la fin.
 
 ## Déclencheurs de scène
 
-- **Serveur iperf3 injoignable** : une mesure n'a pas pu joindre un serveur qui répondait (refus, pas
+- **Serveur iperf3 injoignable** : une mesure n'a pas pu joindre un serveur (refus, pas
   de réponse, nom inconnu). Il part une fois par panne, et de nouveau seulement après une mesure
   réussie. Un serveur occupé par un autre test ne compte pas. Filtre : le serveur. Variables : nom du
   serveur, adresse, raison.

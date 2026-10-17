@@ -36,18 +36,22 @@ export const TICK_MS = 60_000;
 export const FIRST_ROUND_DELAY_MS = 2 * 60_000;
 export const HEARTBEAT_MS = 12 * 3600_000;
 const HOUR_MS = 3600_000;
+const REFRESH_GAP_MS = 10_500;
 
 // Kinds of failure that mean "the server does not answer".
 const UNREACHABLE_KINDS = new Set(['unreachable', 'timeout']);
 
 export class Monitor {
-  constructor({ gladys, store, measure = defaultMeasure, timers = true, now = Date.now }) {
+  constructor({ gladys, store, config, measure = defaultMeasure, timers = true, now = Date.now }) {
     this.gladys = gladys;
     this.store = store;
     this.measureFn = measure;
     this.timers = timers;
     this.now = now;
-    this.config = null;
+    // A usable (empty) configuration until Gladys sends the real one, so a
+    // failed start never leaves the handlers without one.
+    this.config = config;
+    this.configured = false;
     this.state = { lastRoundAt: null, servers: {} };
     this.queue = [];
     this.pending = new Map(); // server id → promise of its result
@@ -55,6 +59,8 @@ export class Monitor {
     this.timer = null;
     this.startedAt = now();
     this.busyLoop = null;
+    this.lastRefreshAt = -Infinity;
+    this.refreshTimer = null;
   }
 
   // --- Lifecycle ---------------------------------------------------------------
@@ -62,15 +68,22 @@ export class Monitor {
   async start(config) {
     const saved = await this.store.load();
     this.state = {
-      lastRoundAt: Number.isFinite(saved.lastRoundAt) ? saved.lastRoundAt : null,
+      // A time in the future (clock set back by NTP after a wrong boot time)
+      // would stall the schedule: brought back to now.
+      lastRoundAt: Number.isFinite(saved.lastRoundAt)
+        ? Math.min(saved.lastRoundAt, this.now())
+        : null,
       servers: saved.servers && typeof saved.servers === 'object' ? saved.servers : {},
     };
     await this.reconfigure(config);
   }
 
   async reconfigure(config) {
-    const first = this.config === null;
+    const first = !this.configured;
+    this.configured = true;
     this.config = config;
+    // Before the network calls: a failed publication must not stop the schedule.
+    this.startTimer();
     if (config.invalid.length > 0) {
       logger.warn(`Ignored server entries: ${config.invalid.join(', ')}`);
     }
@@ -85,7 +98,6 @@ export class Monitor {
       config.servers.length > 0,
       config.servers.length > 0 ? undefined : localized('noServer'),
     );
-    this.startTimer();
   }
 
   startTimer() {
@@ -102,6 +114,8 @@ export class Monitor {
   async stop() {
     clearInterval(this.timer);
     this.timer = null;
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
     this.queue = [];
     await this.store.flush();
   }
@@ -193,12 +207,11 @@ export class Monitor {
   enqueue(server, { priority = false } = {}) {
     const known = this.pending.get(server.id);
     if (known) {
-      if (priority && this.current !== server.id) {
-        // Move it to the front of the queue.
-        const index = this.queue.findIndex((item) => item.server.id === server.id);
-        if (index > 0) {
-          this.queue.unshift(...this.queue.splice(index, 1));
-        }
+      const index = this.queue.findIndex((item) => item.server.id === server.id);
+      if (priority && index !== -1 && !this.queue[index].priority) {
+        // A scheduled item becomes a manual one: it moves with them.
+        const [item] = this.queue.splice(index, 1);
+        this.insertManual(item);
       }
       return known;
     }
@@ -208,22 +221,25 @@ export class Monitor {
     });
     const item = { server, resolve };
     if (priority) {
-      // After the other manual requests, before the scheduled ones.
-      const firstScheduled = this.queue.findIndex((queued) => !queued.priority);
-      item.priority = true;
-      this.queue.splice(firstScheduled === -1 ? this.queue.length : firstScheduled, 0, item);
+      this.insertManual(item);
     } else {
       this.queue.push(item);
     }
     this.pending.set(server.id, promise);
-    this.refreshWidget();
-    this.busyLoop ??= this.drain().finally(() => {
-      this.busyLoop = null;
-    });
+    this.busyLoop ??= this.drain();
     return promise;
   }
 
+  // After the other manual requests, before the scheduled ones.
+  insertManual(item) {
+    item.priority = true;
+    const firstScheduled = this.queue.findIndex((queued) => !queued.priority);
+    this.queue.splice(firstScheduled === -1 ? this.queue.length : firstScheduled, 0, item);
+  }
+
   async drain() {
+    // runOne always awaits: busyLoop is set by the time the loop ends, and is
+    // cleared here, so an enqueue right after the last result starts a new loop.
     while (this.queue.length > 0) {
       const { server, resolve } = this.queue.shift();
       this.current = server.id;
@@ -240,6 +256,7 @@ export class Monitor {
       resolve(result);
       this.refreshWidget();
     }
+    this.busyLoop = null;
   }
 
   async runOne(server) {
@@ -341,7 +358,21 @@ export class Monitor {
 
   // --- Widget ----------------------------------------------------------------
 
+  // The core keeps one refresh request per 10 s and drops the others: a
+  // request inside that window is postponed to its end instead (one pending).
   refreshWidget() {
+    const wait = this.lastRefreshAt + REFRESH_GAP_MS - Date.now();
+    if (wait > 0) {
+      if (this.refreshTimer === null) {
+        this.refreshTimer = setTimeout(() => {
+          this.refreshTimer = null;
+          this.refreshWidget();
+        }, wait);
+        this.refreshTimer.unref?.();
+      }
+      return;
+    }
+    this.lastRefreshAt = Date.now();
     try {
       this.gladys.requestWidgetRefresh?.(WIDGET_KEY);
     } catch (err) {

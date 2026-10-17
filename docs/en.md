@@ -75,7 +75,7 @@ measurement in the background; the widget updates when it ends.
 
 ## Scene triggers
 
-- **iperf3 server unreachable**: a measurement could not reach a server that answered before (refused,
+- **iperf3 server unreachable**: a measurement could not reach a server (refused,
   no answer, unknown name). It fires once per outage, again only after a successful measurement. A
   server busy with another test does not count. Filter: the server. Variables: server name, address,
   reason.

@@ -78,7 +78,7 @@ segundo plano; el widget se actualiza al terminar.
 
 ## Activadores de escena
 
-- **Servidor iperf3 inaccesible**: una medición no pudo alcanzar un servidor que antes respondía
+- **Servidor iperf3 inaccesible**: una medición no pudo alcanzar un servidor
   (rechazo, sin respuesta, nombre desconocido). Se dispara una vez por corte, y de nuevo solo tras una
   medición correcta. Un servidor ocupado con otra prueba no cuenta. Filtro: el servidor. Variables:
   nombre del servidor, dirección, motivo.

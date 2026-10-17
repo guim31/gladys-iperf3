@@ -14,8 +14,15 @@
 // -----------------------------------------------------------------------------
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 export const BINARY = process.env.IPERF3_BINARY || 'iperf3';
+// iperf3 creates (and unlinks at once) a temporary file per stream, in
+// $TMPDIR or /tmp: on the read-only rootfs of the Gladys sandbox every test
+// fails with "unable to create a new stream: Read-only file system". /data is
+// the one writable path.
+export const TEMP_DIR = process.env.IPERF3_TMPDIR || (existsSync('/data') ? '/data' : tmpdir());
 export const CONNECT_TIMEOUT_MS = 5000;
 export const PAUSE_BETWEEN_RUNS_MS = 1000;
 export const BUSY_RETRY_MS = 5000;
@@ -45,7 +52,9 @@ export function buildArgs(server, options, { reverse }) {
     String(CONNECT_TIMEOUT_MS),
   ];
   if (options.protocol === 'udp') {
-    args.push('-u', '-b', `${options.udpBitrate}M`);
+    // iperf3 applies -b to each stream: split the total between them (in kbit/s).
+    const perStream = Math.max(1, Math.round((options.udpBitrate * 1000) / options.streams));
+    args.push('-u', '-b', `${perStream}K`);
   }
   if (reverse) {
     args.push('-R');
@@ -104,7 +113,10 @@ export function runIperf3(args, { timeoutMs, binary = BINARY } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(binary, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, TMPDIR: TEMP_DIR },
+      });
     } catch (err) {
       reject(new IperfError('missing', `cannot start iperf3: ${err.message}`));
       return;

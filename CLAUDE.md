@@ -263,3 +263,10 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
   (même choix que gladys-apcupsd).
 - Déclencheurs sur transition seulement, état gardé dans `/data/state.json` pour ne pas repartir au
   redémarrage ; aucun événement ni état pour un serveur pas ajouté à Gladys.
+- **`TMPDIR` obligatoire** : iperf3 crée (puis efface aussitôt) un fichier temporaire par flux, dans
+  `$TMPDIR` ou `/tmp`. Sur le rootfs en lecture seule de la sandbox, chaque test échouait en
+  « unable to create a new stream: Read-only file system » (vu en Docker verrouillé, invisible dans
+  les tests unitaires) : le client est lancé avec `TMPDIR=/data`.
+- **`-b` est par flux** en UDP : le débit configuré est divisé entre les flux parallèles (en kbit/s).
+- L'action de scène répond `success: 0` après 110 s (le cœur abandonne à 120 s) ; la mesure continue
+  et met l'appareil à jour.

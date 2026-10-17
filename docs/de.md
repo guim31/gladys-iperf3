@@ -78,8 +78,7 @@ sehen. Die Schaltflächen starten die Messung im Hintergrund; das Widget aktuali
 
 ## Szenen-Auslöser
 
-- **iperf3-Server nicht erreichbar**: Eine Messung konnte einen Server, der vorher antwortete, nicht
-  erreichen (abgelehnt, keine Antwort, unbekannter Name). Er startet einmal pro Ausfall und erst nach
+- **iperf3-Server nicht erreichbar**: Eine Messung konnte einen Server nicht erreichen (abgelehnt, keine Antwort, unbekannter Name). Er startet einmal pro Ausfall und erst nach
   einer erfolgreichen Messung wieder. Ein durch einen anderen Test belegter Server zählt nicht.
   Filter: der Server. Variablen: Servername, Adresse, Grund.
 - **Geschwindigkeit unter der Schwelle**: Download oder Upload einer Messung liegt unter der Schwelle

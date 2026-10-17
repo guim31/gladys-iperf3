@@ -55,6 +55,7 @@ export function registerHandlers(gladys, options = {}) {
   const monitor = new Monitor({
     gladys,
     store: options.store ?? new Store(),
+    config: normalizeConfig(),
     measure: options.measure,
     timers: options.timers ?? true,
     now: options.now,
@@ -83,8 +84,9 @@ export function registerHandlers(gladys, options = {}) {
         await monitor.reconfigure(config);
         return;
       }
-      started = true;
       await monitor.start(config);
+      // Only now: a start that failed is tried again at the next connection.
+      started = true;
     } catch (err) {
       logger.error('Initialization failed', err);
       await gladys.setConnectionStatus(false, INIT_FAILED).catch(() => {});

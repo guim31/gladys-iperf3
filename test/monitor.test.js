@@ -295,3 +295,62 @@ test('a normal round writes nothing at info; a failure once, and its end once', 
   assert.match(nasLines[0].text, /measurement failed \(unreachable\)/);
   assert.match(nasLines[1].text, /work again/);
 });
+
+test('a scheduled item asked manually moves after the manual requests, not before', async (t) => {
+  const order = [];
+  const iperf = createIperf();
+  const track = (host) => async (args) => {
+    order.push(host);
+    const { report } = await import('./helpers/world.js');
+    return report(`tcp-${args.includes('-R') ? 'down' : 'up'}`);
+  };
+  iperf.servers = { a: track('a'), b: track('b'), c: track('c'), d: track('d') };
+  const w = await world(t, { iperf, config: { servers: 'a, b, c, d' } });
+  const [a, b, c, d] = w.monitor.config.servers;
+  w.monitor.enqueue(a);
+  w.monitor.enqueue(b);
+  w.monitor.enqueue(c);
+  w.monitor.enqueue(d, { priority: true });
+  w.monitor.enqueue(c, { priority: true });
+  w.monitor.enqueue(b, { priority: true });
+  await settle(w);
+  assert.deepEqual(
+    order.filter((_, i) => i % 2 === 0),
+    ['a', 'd', 'c', 'b'],
+  );
+});
+
+test('a stored round time in the future (clock set back) does not stall the schedule', async (t) => {
+  const w = await world(t, {
+    saved: { lastRoundAt: 1_700_000_000_000 + 1000 * HOUR, servers: {} },
+  });
+  await create(w, 'NAS');
+  w.clock.advance(6 * HOUR);
+  await w.monitor.tick();
+  assert.equal(w.iperf.runs.length, 2);
+});
+
+test('the scene action answers success 0 before the core gives up', async (t) => {
+  const iperf = createIperf({ '192.0.2.10': () => new Promise(() => {}) });
+  const w = await world(t, { iperf, config: { servers: 'NAS=192.0.2.10' } });
+  const nas = await create(w, 'NAS');
+  w.monitor.sceneWaitMs = 20;
+  const ack = await w.fake.sceneAction('run_measurement', { device: nas.external_id });
+  assert.deepEqual(ack.data.outputs, { success: 0 });
+});
+
+test('a failed first start keeps usable handlers, and is tried again at reconnection', async (t) => {
+  const w = await world(t, { connect: false });
+  t.mock.method(w.gladys, 'publishDiscoveredDevices', async () => {
+    throw new Error('Gladys not ready');
+  });
+  await w.gladys.connect();
+  await w.app.ready;
+  assert.equal(w.monitor.config.servers.length, 2, 'the configuration is there');
+  const ack = await w.fake.action('measure_now');
+  assert.equal(ack.success, true);
+  t.mock.restoreAll();
+  await w.gladys.disconnect();
+  await w.gladys.connect();
+  assert.equal(w.fake.discoveredDevices.length, 2);
+});

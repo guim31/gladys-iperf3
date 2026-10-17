@@ -13,6 +13,7 @@ import {
   measure,
   parseReport,
   runIperf3,
+  TEMP_DIR,
 } from '../src/iperf3.js';
 import { report } from './helpers/world.js';
 
@@ -39,7 +40,8 @@ test('the command line: JSON, client, port, duration, streams, then -R and UDP o
     { ...UDP, streams: 4 },
     { reverse: true },
   );
-  assert.deepEqual(udpDown.slice(-4), ['-u', '-b', '100M', '-R']);
+  // -b is per stream: 100 Mbit/s split between 4 streams.
+  assert.deepEqual(udpDown.slice(-4), ['-u', '-b', '25000K', '-R']);
   assert.ok(udpDown.includes('2001:db8::10'));
   assert.ok(!udpDown.includes('-s'), 'never a server');
 });
@@ -164,4 +166,15 @@ test('runIperf3 kills a run past its deadline, and reports a missing binary', as
     runIperf3(['-e', 'console.log("not json")'], { timeoutMs: 5000, binary: process.execPath }),
     { kind: 'error' },
   );
+});
+
+test('iperf3 gets a writable TMPDIR (the rootfs of the sandbox is read-only)', async () => {
+  const parsed = await runIperf3(
+    ['-e', 'process.stdout.write(JSON.stringify({ tmp: process.env.TMPDIR }))'],
+    {
+      timeoutMs: 5000,
+      binary: process.execPath,
+    },
+  );
+  assert.equal(parsed.tmp, TEMP_DIR);
 });

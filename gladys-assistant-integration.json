@@ -345,10 +345,10 @@
         "es": "Servidor iperf3 inaccesible"
       },
       "description": {
-        "en": "A measurement could not reach the server, after it last answered (once per outage).",
-        "fr": "Une mesure n'a pas pu joindre le serveur, alors qu'il répondait (une fois par panne).",
-        "de": "Eine Messung konnte den Server nicht erreichen, nachdem er zuletzt antwortete (einmal pro Ausfall).",
-        "es": "Una medición no pudo alcanzar el servidor, que antes respondía (una vez por corte)."
+        "en": "A measurement could not reach the server (once per outage, again only after it answers).",
+        "fr": "Une mesure n'a pas pu joindre le serveur (une fois par panne, puis seulement après qu'il a répondu).",
+        "de": "Eine Messung konnte den Server nicht erreichen (einmal pro Ausfall, erst nach einer Antwort wieder).",
+        "es": "Una medición no pudo alcanzar el servidor (una vez por corte, y de nuevo solo tras responder)."
       },
       "fields": [
         {

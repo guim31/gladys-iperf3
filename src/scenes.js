@@ -11,13 +11,28 @@
 // the scene can react to it.
 // -----------------------------------------------------------------------------
 
+import { MESSAGES } from './texts.js';
+
+// The core waits 120 s at most (manifest timeout_seconds): answer before, with
+// success 0, when the queue or a slow server would make the action time out.
+// The measurement itself goes on and still updates the device.
+export const SCENE_WAIT_MS = 110_000;
+
 export const SCENE_ACTIONS = {
   async run_measurement(monitor, { fields }) {
     const server = monitor.serverOfDevice(fields.device);
     if (!server) {
-      throw new Error('This iperf3 server is no longer in the configuration');
+      const texts = MESSAGES[monitor.config.language] ?? MESSAGES.en;
+      throw new Error(texts.unknownServer);
     }
-    const result = await monitor.enqueue(server, { priority: true });
+    let timer;
+    const result = await Promise.race([
+      monitor.enqueue(server, { priority: true }),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), monitor.sceneWaitMs ?? SCENE_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
     if (!result?.ok) {
       return { success: 0 };
     }

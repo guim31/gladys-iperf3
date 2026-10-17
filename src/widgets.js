@@ -121,6 +121,8 @@ export function selectedServers(monitor, settings) {
 
 function singleServer(monitor, server, language) {
   const result = monitor.lastResult(server);
+  // A result of the other protocol (just switched) shows its speeds only.
+  const { protocol } = monitor.config;
   const components = [];
   if (monitor.isCreated(server)) {
     const ids = serverIds(monitor.gladys, server.id);
@@ -173,13 +175,13 @@ function singleServer(monitor, server, language) {
   if (result && !result.ok && !monitor.isMeasuring(server)) {
     items.push({ label: t(TEXT.failed, language), value: status.value, color: status.color });
   }
-  if (result?.ok && result.values.retransmits !== null && result.values.retransmits !== undefined) {
+  if (result?.ok && protocol === 'tcp' && Number.isFinite(result.values.retransmits)) {
     items.push({ label: t(TEXT.retransmits, language), value: result.values.retransmits });
   }
-  if (result?.ok && Number.isFinite(result.values.jitter)) {
+  if (result?.ok && protocol === 'udp' && Number.isFinite(result.values.jitter)) {
     items.push({ label: t(TEXT.jitter, language), value: `${result.values.jitter} ms` });
   }
-  if (result?.ok && Number.isFinite(result.values.loss)) {
+  if (result?.ok && protocol === 'udp' && Number.isFinite(result.values.loss)) {
     items.push({ label: t(TEXT.loss, language), value: `${result.values.loss} %` });
   }
   components.push({ type: 'status', items });
