@@ -1,169 +1,253 @@
 // -----------------------------------------------------------------------------
-// Dashboard widgets (SDK v0.14+, Gladys 5.1+).
+// Dashboard widget (manifest `widgets`, Gladys 5.1+): `speeds`.
 //
-// A widget puts the integration's own data on the Gladys dashboard without a
-// dedicated core widget. The manifest `widgets` field declares its identity
-// (key, label, icon, optional per-instance `settings`); at runtime the
-// integration returns a DECLARATIVE content — `text`, `value`, `gauge`,
-// `status`, `chart`, `card-list`, `image`, `button` — that the core renders
-// with its own theme, dark mode and translations. No HTML, no CSS.
+// - One server (chosen in the widget settings, or the only one): download and
+//   upload tiles bound to the device (live), their chart over the last week, a
+//   status list (last measurement, retransmissions or jitter and loss) and a
+//   "Measure now" button.
+// - Several servers: one status line per server with its last speeds, and a
+//   "Measure all" button.
+// Budget (8 components, 1 status, 2 texts): 5 components at most.
 //
-// Each entry of WIDGETS is keyed by the widget `key` and exposes:
-//   - get(gladys, { settings, language, units, config }): the content,
-//     registered by index.js with `gladys.onWidgetGet(key, ...)`;
-//   - action(gladys, { actionKey, params, settings, config }) (optional): a
-//     tapped `button` carrying an `action`, registered with
-//     `gladys.onWidgetAction`.
-//
-// Check your contents in the tests with `validateWidgetContent` (exported by
-// the SDK, see test/widgets.test.js), or run with DEBUG=gladys-integration-sdk
-// to have the SDK log every violation of the vocabulary and the budget.
+// Buttons start the measurement in the background and answer at once: the
+// measurement takes up to a minute, and the queue refreshes the widget when it
+// ends. The server travels in `params`, which the core echoes from the
+// content, never from the request.
 // -----------------------------------------------------------------------------
 
-import {
-  createLogger,
-  DEVICE_FEATURE_CATEGORIES,
-  DEVICE_TRANSPORTS,
-  WIDGET_COLORS,
-} from '@gladysassistant/integration-sdk';
-import { identifyDevice } from './devices/index.js';
-import { weatherStation } from './devices/weatherStation.js';
-import { plug } from './devices/plug.js';
-import { light } from './devices/light.js';
+import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
+import { displayName, serverIds } from './devices.js';
+import { WIDGET_KEY } from './monitor.js';
+import { FAILURES } from './texts.js';
 
-const logger = createLogger({ name: 'widgets' });
+export const MAX_STATUS_ITEMS = 10;
+export const TTL_SECONDS = 60;
+export const ACTION = { MEASURE_ONE: 'measure_1', MEASURE_ALL: 'measure_all' };
 
-// Widget key, as declared in the manifest `widgets` field.
-export const DEMO_STATUS_WIDGET = 'demo_status';
-
-// Keys of the `button` actions the demo_status content declares.
-const DEMO_STATUS_ACTIONS = { IDENTIFY_LIGHT: 'identify_light' };
-
-// How the plug transport reads in the status list.
-const TRANSPORT_STATUS = {
-  [DEVICE_TRANSPORTS.LOCAL]: { value: { en: 'Local', fr: 'Locale' }, color: WIDGET_COLORS.SUCCESS },
-  [DEVICE_TRANSPORTS.CLOUD]: { value: { en: 'Cloud', fr: 'Cloud' }, color: WIDGET_COLORS.INFO },
-  [DEVICE_TRANSPORTS.UNREACHABLE]: {
-    value: { en: 'Unreachable', fr: 'Injoignable' },
-    color: WIDGET_COLORS.DANGER,
+export const TEXT = {
+  empty: {
+    en: 'No iperf3 server yet: add one in the configuration of the iPerf3 integration.',
+    fr: "Aucun serveur iperf3 pour l'instant : ajoutez-en un dans la configuration de l'intégration iPerf3.",
+    de: 'Noch kein iperf3-Server: Füge einen in der Konfiguration der Integration iPerf3 hinzu.',
+    es: 'Aún no hay servidores iperf3: añada uno en la configuración de la integración iPerf3.',
+  },
+  download: { en: 'Download', fr: 'Descendant', de: 'Download', es: 'Descarga' },
+  upload: { en: 'Upload', fr: 'Montant', de: 'Upload', es: 'Subida' },
+  last: {
+    en: 'Last measurement',
+    fr: 'Dernière mesure',
+    de: 'Letzte Messung',
+    es: 'Última medición',
+  },
+  never: {
+    en: 'Not measured yet',
+    fr: 'Pas encore mesuré',
+    de: 'Noch nicht gemessen',
+    es: 'Aún sin medir',
+  },
+  measuring: { en: 'Measuring…', fr: 'Mesure en cours…', de: 'Messung läuft…', es: 'Midiendo…' },
+  failed: { en: 'Failed', fr: 'Échec', de: 'Fehlgeschlagen', es: 'Error' },
+  retransmits: {
+    en: 'Retransmissions',
+    fr: 'Retransmissions',
+    de: 'Neuübertragungen',
+    es: 'Retransmisiones',
+  },
+  jitter: { en: 'Jitter', fr: 'Gigue', de: 'Jitter', es: 'Jitter' },
+  loss: { en: 'Packet loss', fr: 'Pertes', de: 'Paketverlust', es: 'Pérdidas' },
+  measureOne: { en: 'Measure now', fr: 'Mesurer', de: 'Jetzt messen', es: 'Medir ahora' },
+  measureAll: { en: 'Measure all', fr: 'Tout mesurer', de: 'Alle messen', es: 'Medir todos' },
+  started: {
+    en: 'Measurement started: the widget updates when it ends.',
+    fr: 'Mesure lancée : le widget se mettra à jour à la fin.',
+    de: 'Messung gestartet: Das Widget aktualisiert sich am Ende.',
+    es: 'Medición iniciada: el widget se actualizará al terminar.',
+  },
+  gone: {
+    en: 'This server is no longer in the configuration.',
+    fr: "Ce serveur n'est plus dans la configuration.",
+    de: 'Dieser Server ist nicht mehr in der Konfiguration.',
+    es: 'Este servidor ya no está en la configuración.',
   },
 };
 
-// A live tile references a feature by its external_id: read it from the
-// discovery payload itself, so the widget and the device never disagree.
-function featureExternalId(gladys, config, blueprint, category) {
-  const device = blueprint.buildDevice(gladys, config);
-  return device.features.find((feature) => feature.category === category).external_id;
+const t = (text, language) => text[language] ?? text.en;
+
+/** A speed for a short text: no decimal from 100 Mbit/s up. */
+export const formatMbps = (value) => (value >= 100 ? String(Math.round(value)) : String(value));
+
+function formatDate(iso, language) {
+  try {
+    return new Intl.DateTimeFormat(language, { dateStyle: 'short', timeStyle: 'short' }).format(
+      new Date(iso),
+    );
+  } catch {
+    return iso.slice(0, 16).replace('T', ' ');
+  }
 }
 
-function plugConnectionStatus(gladys, config) {
-  const { transport, degraded } = plug.transport(gladys, config);
-  const { value, color } = TRANSPORT_STATUS[transport];
-  if (degraded) {
+/** One status line of a server: its speeds, or why it has none (≤ 40 characters). */
+export function statusValue(monitor, server, language) {
+  if (monitor.isMeasuring(server)) {
+    return { value: t(TEXT.measuring, language), color: WIDGET_COLORS.INFO };
+  }
+  const result = monitor.lastResult(server);
+  if (!result) {
+    return { value: t(TEXT.never, language), color: WIDGET_COLORS.NEUTRAL };
+  }
+  if (!result.ok) {
+    const reasons = FAILURES[language] ?? FAILURES.en;
     return {
-      value: { en: `${value.en} (degraded mode)`, fr: `${value.fr} (mode dégradé)` },
-      color: WIDGET_COLORS.WARNING,
+      value: (reasons[result.error] ?? reasons.error).slice(0, 40),
+      color: WIDGET_COLORS.DANGER,
     };
   }
-  return { value, color };
+  const { download, upload } = result.values;
+  return {
+    value: `↓ ${formatMbps(download)} · ↑ ${formatMbps(upload)} Mbit/s`,
+    color: WIDGET_COLORS.SUCCESS,
+  };
+}
+
+/** The servers a widget instance shows. */
+export function selectedServers(monitor, settings) {
+  if (typeof settings?.device === 'string' && settings.device !== '') {
+    const server = monitor.serverOfDevice(settings.device);
+    return server ? [server] : [];
+  }
+  const created = monitor.createdServers();
+  return (created.length > 0 ? created : monitor.config.servers).slice(0, MAX_STATUS_ITEMS);
+}
+
+function singleServer(monitor, server, language) {
+  const result = monitor.lastResult(server);
+  // A result of the other protocol (just switched) shows its speeds only.
+  const { protocol } = monitor.config;
+  const components = [];
+  if (monitor.isCreated(server)) {
+    const ids = serverIds(monitor.gladys, server.id);
+    components.push(
+      {
+        type: 'value',
+        label: t(TEXT.download, language),
+        device_feature: ids.download,
+        icon: 'arrow-down',
+      },
+      {
+        type: 'value',
+        label: t(TEXT.upload, language),
+        device_feature: ids.upload,
+        icon: 'arrow-up',
+      },
+      {
+        type: 'chart',
+        device_features: [ids.download, ids.upload],
+        interval: 'last-week',
+        chart_type: 'line',
+        unit: 'Mbit/s',
+      },
+    );
+  } else if (result?.ok) {
+    components.push(
+      {
+        type: 'value',
+        label: t(TEXT.download, language),
+        value: result.values.download,
+        unit: 'Mbit/s',
+      },
+      {
+        type: 'value',
+        label: t(TEXT.upload, language),
+        value: result.values.upload,
+        unit: 'Mbit/s',
+      },
+    );
+  }
+  const status = statusValue(monitor, server, language);
+  const items = [
+    {
+      label: t(TEXT.last, language),
+      value:
+        result && !monitor.isMeasuring(server) ? formatDate(result.at, language) : status.value,
+      color: status.color,
+    },
+  ];
+  if (result && !result.ok && !monitor.isMeasuring(server)) {
+    items.push({ label: t(TEXT.failed, language), value: status.value, color: status.color });
+  }
+  if (result?.ok && protocol === 'tcp' && Number.isFinite(result.values.retransmits)) {
+    items.push({ label: t(TEXT.retransmits, language), value: result.values.retransmits });
+  }
+  if (result?.ok && protocol === 'udp' && Number.isFinite(result.values.jitter)) {
+    items.push({ label: t(TEXT.jitter, language), value: `${result.values.jitter} ms` });
+  }
+  if (result?.ok && protocol === 'udp' && Number.isFinite(result.values.loss)) {
+    items.push({ label: t(TEXT.loss, language), value: `${result.values.loss} %` });
+  }
+  components.push({ type: 'status', items });
+  components.push({
+    type: 'button',
+    label: t(TEXT.measureOne, language),
+    icon: 'activity',
+    style: 'secondary',
+    action: { key: ACTION.MEASURE_ONE, params: { server: server.id } },
+  });
+  return components;
 }
 
 export const WIDGETS = {
-  [DEMO_STATUS_WIDGET]: {
-    // `settings` holds the per-instance values of the declared `settings`
-    // (none here); `language` and `units` are those of the user viewing the
-    // dashboard, for the values you format yourself. Multi-language objects
-    // (`{ en, fr }`) are picked by the core, like everywhere else.
-    async get(gladys, { config }) {
-      logger.debug(`onWidgetGet <- ${DEMO_STATUS_WIDGET}`);
+  [WIDGET_KEY]: {
+    async get(monitor, { settings, language = 'en' }) {
+      const servers = selectedServers(monitor, settings);
+      if (servers.length === 0) {
+        return {
+          ttl_seconds: TTL_SECONDS,
+          components: [{ type: 'text', variant: 'body', text: t(TEXT.empty, language) }],
+        };
+      }
+      if (servers.length === 1) {
+        return {
+          ttl_seconds: TTL_SECONDS,
+          components: singleServer(monitor, servers[0], language),
+        };
+      }
       return {
-        // Reload policy: the computed parts below only change with the
-        // config, and index.js nudges the widget on every (re)connection and
-        // config update (see refreshWidgets) — the TTL is just a safety net.
-        ttl_seconds: 300,
+        ttl_seconds: TTL_SECONDS,
         components: [
-          // Device-bound tiles: LIVE, they follow the published states over
-          // the core's real-time path. No TTL, no nudge involved.
-          {
-            type: 'value',
-            label: { en: 'Temperature', fr: 'Température' },
-            icon: 'thermometer',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              weatherStation,
-              DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
-            ),
-          },
-          {
-            type: 'value',
-            label: { en: 'Office plug', fr: 'Prise du bureau' },
-            icon: 'zap',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              plug,
-              DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-            ),
-          },
-          // Computed rows: what the integration knows that no device feature
-          // carries. Served from the core cache until the TTL or a nudge.
           {
             type: 'status',
-            items: [
-              {
-                label: { en: 'Plug connection', fr: 'Connexion de la prise' },
-                icon: 'wifi',
-                ...plugConnectionStatus(gladys, config),
-              },
-              {
-                label: { en: 'Observed location', fr: 'Position observée' },
-                icon: 'map-pin',
-                value: `${config.latitude.toFixed(2)}, ${config.longitude.toFixed(2)}`,
-                color: WIDGET_COLORS.NEUTRAL,
-              },
-            ],
+            items: servers.map((server) => ({
+              label: displayName(server).slice(0, 40),
+              ...statusValue(monitor, server, language),
+            })),
           },
-          // `params` are declared HERE and sent back as-is: the handler never
-          // receives user input (a dashboard can hang on a public wall).
           {
             type: 'button',
-            label: { en: 'Identify the light', fr: 'Identifier la lampe' },
-            icon: 'eye',
+            label: t(TEXT.measureAll, language),
+            icon: 'activity',
             style: 'secondary',
-            action: {
-              key: DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT,
-              params: { device: light.deviceExternalId(gladys) },
-            },
+            action: { key: ACTION.MEASURE_ALL },
           },
         ],
       };
     },
 
-    // Resolve an optional toast (string or multi-language object, ≤ 200
-    // characters). After a successful action the core drops the cached
-    // content and every open dashboard refetches it: no nudge needed.
-    async action(gladys, { actionKey, params, config }) {
-      logger.info(`onWidgetAction <- ${DEMO_STATUS_WIDGET}.${actionKey}`);
-      if (actionKey === DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT) {
-        return identifyDevice(gladys, params.device, config);
+    async action(monitor, { actionKey, params, settings }) {
+      let servers = [];
+      if (actionKey === ACTION.MEASURE_ONE) {
+        const server = monitor.server(params?.server);
+        servers = server ? [server] : [];
+      } else if (actionKey === ACTION.MEASURE_ALL) {
+        servers = selectedServers(monitor, settings);
       }
-      // Throwing acks the action as failed: the message reaches the user.
-      throw new Error(`Unknown widget action: ${actionKey}`);
+      if (servers.length === 0) {
+        return TEXT.gone;
+      }
+      // In the background: the queue refreshes the widget at the end.
+      for (const server of servers) {
+        monitor.enqueue(server, { priority: true });
+      }
+      return TEXT.started;
     },
   },
 };
-
-/**
- * Freshness nudge: ask the core to re-pull every widget NOW instead of
- * waiting for the content TTL. Call it when you KNOW a computed content
- * changed (here: the config, which drives the plug transport and the observed
- * location) — and after every (re)connection, since the nudges are
- * fire-and-forget: rate-limited core-side to 1 per 10 s per widget, dropped
- * silently while disconnected.
- */
-export function refreshWidgets(gladys) {
-  for (const key of Object.keys(WIDGETS)) {
-    gladys.requestWidgetRefresh(key);
-  }
-}

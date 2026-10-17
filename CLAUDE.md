@@ -31,16 +31,20 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+index.js                          SDK wiring only (src/app.js registers the handlers before connect())
+src/app.js                        handlers → monitor, the "Measure all servers now" action
+src/monitor.js                    servers, measurement queue, schedule, states, scene triggers
+src/iperf3.js                     iperf3 client: command line, JSON report parsing, error kinds
+src/devices.js                    Gladys device of a server (features by protocol, names)
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
 src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+src/texts.js                      texts produced by the container, four languages
+src/store.js                      /data/state.json (last results, trigger states, last round)
+src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults), server list parsing
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
+docs/en.md, fr.md, de.md, es.md   user documentation, re-hosted by Gladys (mandatory)
 test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+test/fixtures/iperf3/             real iperf3 3.20 JSON reports (anonymized)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +74,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, widget texts, feature names, manifest texts, and `docs/en.md`,
+  `fr.md`, `de.md`, `es.md`, kept in sync (`test/i18n.test.js`).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +238,35 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## iPerf3 (propre à cette intégration)
+
+- **Client seulement** : le binaire `iperf3` vient du paquet Alpine (3.20 au 17/10/2026). Ne jamais
+  lancer `iperf3 -s` dans le conteneur. Une mesure = deux lancements `-J`, montant puis descendant
+  (`-R`), à une seconde d'écart : un serveur iperf3 met un instant à réécouter, surtout après de
+  l'UDP (relevé en Docker : « Connection refused » juste après un test UDP).
+- **Rapport JSON** : iperf3 sort avec le code 1 sur une erreur de test, mais imprime quand même un
+  rapport `{ "error": "..." }` : c'est le rapport qui fait foi, pas le code de sortie. Débit lu côté
+  récepteur (`end.sum_received`) ; retransmissions TCP côté émetteur (`end.sum_sent.retransmits`,
+  présent aussi en `-R`, où l'émetteur est le serveur) ; gigue et pertes UDP dans `sum_received`.
+- **Erreurs** : « the server is busy running a test » → `busy` (un autre client teste : un seul
+  nouvel essai après 5 s, ne déclenche pas « injoignable ») ; « unable to connect … » (refus, délai,
+  DNS : « Resource temporarily unavailable ») → `unreachable`.
+- **Une seule mesure à la fois** pour toute l'intégration (file dans `monitor.js`), les demandes
+  manuelles (bouton, scène, widget) avant les mesures planifiées. Les mesures planifiées ne visent
+  que les appareils ajoutés ; le bouton de configuration mesure toute la liste.
+- **Identifiants** : `serverId` = hôte en minuscules, caractères hors `[a-z0-9.-]` remplacés par `-`,
+  puis `-port`. Figé : le changer orphelinerait les appareils.
+- Les fonctionnalités dépendent du protocole (TCP : retransmissions ; UDP : gigue, pertes), avec des
+  `external_id` stables : changer de protocole fait proposer « Mettre à jour ».
+- Pertes en `unknown/unknown` + `percent` : le cœur n'a pas de catégorie de pourcentage générique
+  (même choix que gladys-apcupsd).
+- Déclencheurs sur transition seulement, état gardé dans `/data/state.json` pour ne pas repartir au
+  redémarrage ; aucun événement ni état pour un serveur pas ajouté à Gladys.
+- **`TMPDIR` obligatoire** : iperf3 crée (puis efface aussitôt) un fichier temporaire par flux, dans
+  `$TMPDIR` ou `/tmp`. Sur le rootfs en lecture seule de la sandbox, chaque test échouait en
+  « unable to create a new stream: Read-only file system » (vu en Docker verrouillé, invisible dans
+  les tests unitaires) : le client est lancé avec `TMPDIR=/data`.
+- **`-b` est par flux** en UDP : le débit configuré est divisé entre les flux parallèles (en kbit/s).
+- L'action de scène répond `success: 0` après 110 s (le cœur abandonne à 120 s) ; la mesure continue
+  et met l'appareil à jour.

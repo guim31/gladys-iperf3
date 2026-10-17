@@ -1,0 +1,128 @@
+# iPerf3
+
+Mida la velocidad de su **red local** desde Gladys: el Wi-Fi hasta el despacho, los adaptadores PLC
+hasta el garaje, el cable hasta el NAS. La integración ejecuta el cliente
+[iperf3](https://iperf.fr/) contra servidores iperf3 que **usted** tiene en sus equipos,
+periódicamente y a petición, y guarda el historial de cada enlace.
+
+No mide su conexión a Internet: para eso, vea la integración Speedtest.net. Aquí, cada medición se
+queda en su red.
+
+## Lo que obtiene
+
+- **Un dispositivo por servidor iperf3**, con las velocidades de descarga y subida (Mbit/s, con
+  historial), las retransmisiones TCP (o el jitter y la pérdida de paquetes en UDP) y «última medición
+  correcta».
+- **Mediciones automáticas** cada 1 a 24 horas (6 por defecto), o solo a petición.
+- Un **widget** del panel: las últimas velocidades de cada servidor, o los mosaicos y el gráfico de la
+  semana de uno solo, con un botón para volver a medir.
+- Dos **activadores de escena**: un servidor deja de ser accesible, una velocidad baja de un umbral.
+- Una **acción de escena**: medir un servidor y usar las velocidades en los pasos siguientes.
+
+## Requisitos
+
+- Gladys Assistant **5.1.0** o posterior.
+- Un **servidor iperf3** en cada equipo que quiera medir: `iperf3 -s` (puerto 5201 por defecto).
+  iperf3 existe para Linux, Windows, macOS, la mayoría de los NAS (paquetes Synology y QNAP, imagen
+  Docker `networkstatic/iperf3`) y los routers OpenWrt. Inícielo como servicio para que sobreviva a un
+  reinicio.
+- El servidor debe ser accesible desde el equipo de Gladys en su puerto TCP (y UDP en modo UDP).
+
+El cliente iperf3 viene incluido en la imagen de la integración: no hay nada que instalar en Gladys.
+La integración nunca inicia un servidor iperf3.
+
+## Configuración
+
+| Campo                             | Función                                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| Servidores iperf3                 | Lista separada por comas: `dirección`, o `nombre=dirección`, con `:puerto` si no es 5201. |
+| Medición automática               | Nunca (a petición), cada 1, 2, 3, 6, 12 horas, o una vez al día. Por defecto: 6 h.        |
+| Protocolo                         | TCP (caudal real, retransmisiones) o UDP (tasa fija, jitter y pérdida de paquetes).       |
+| Duración por sentido (s)          | De 3 a 20 segundos, 5 por defecto. Una medición dura el doble, más 2 segundos.            |
+| Flujos paralelos                  | De 1 a 8. Varios flujos aprovechan mejor los enlaces rápidos (2,5 Gbit/s o más).          |
+| Tasa UDP (Mbit/s)                 | Solo UDP: la tasa enviada. Por encima de lo que admite el enlace, aumentan las pérdidas.  |
+| Umbral de velocidad baja (Mbit/s) | Para el activador «Velocidad bajo el umbral». 0 lo desactiva.                             |
+| Idioma de los nombres             | Idioma de los nombres de las funciones y de los mensajes. Por defecto: francés.           |
+
+Ejemplo: `NAS=192.168.1.10, Oficina=192.168.1.20:5202, [fd00::30]`. Hasta 10 servidores. Una entrada
+errónea se ignora y se indica en la respuesta del botón **Medir todos los servidores** y en los
+registros.
+
+Abra luego la pestaña **Descubrimiento** de la integración y añada los dispositivos que quiera
+seguir. Solo los dispositivos añadidos a Gladys se miden automáticamente; el botón **Medir todos los
+servidores** mide todos los servidores de la lista, lo que permite comprobar la configuración antes.
+
+## Dispositivos
+
+Cada servidor da un dispositivo con su nombre («iPerf3 192.168.1.10» sin nombre), con:
+
+| Función                  | Tipo               | Notas                                                             |
+| ------------------------ | ------------------ | ----------------------------------------------------------------- |
+| Descarga                 | Velocidad (Mbit/s) | Servidor → Gladys, medida por el receptor.                        |
+| Subida                   | Velocidad (Mbit/s) | Gladys → servidor, medida por el receptor.                        |
+| Retransmisiones TCP      | Contador           | Solo TCP: segmentos reenviados, suma de ambos sentidos.           |
+| Jitter                   | Duración (ms)      | Solo UDP: el peor de los dos sentidos.                            |
+| Pérdida de paquetes      | Porcentaje         | Solo UDP: el peor de los dos sentidos.                            |
+| Última medición correcta | Binario            | 0 cuando la última medición falló (las velocidades se conservan). |
+
+Los valores se actualizan tras cada medición, Gladys nunca los consulta. Cambiar de protocolo cambia
+las funciones: la pestaña Descubrimiento ofrece entonces **Actualizar** los dispositivos.
+
+## Widget del panel
+
+Añada el widget **Velocidad de la red local**. Sin ajustes, lista todos los servidores con sus últimas
+velocidades (o el motivo del fallo de la última medición), con un botón **Medir todos**. Elija un
+servidor en sus ajustes (o tenga solo uno) para ver sus mosaicos en directo, el gráfico de la última
+semana, la hora de la última medición y un botón **Medir ahora**. Los botones inician la medición en
+segundo plano; el widget se actualiza al terminar.
+
+## Activadores de escena
+
+- **Servidor iperf3 inaccesible**: una medición no pudo alcanzar un servidor
+  (rechazo, sin respuesta, nombre desconocido). Se dispara una vez por corte, y de nuevo solo tras una
+  medición correcta. Un servidor ocupado con otra prueba no cuenta. Filtro: el servidor. Variables:
+  nombre del servidor, dirección, motivo.
+- **Velocidad bajo el umbral**: la descarga o la subida de una medición está por debajo del umbral de
+  la configuración. Se dispara una vez por sentido, y de nuevo solo cuando la velocidad haya vuelto a
+  subir. Filtros: el servidor, el sentido. Variables: nombre del servidor, velocidad, umbral.
+
+El activador habitual de Gladys «cambia el valor de un dispositivo» también funciona con las
+velocidades.
+
+## Acción de escena
+
+**Medir un servidor iperf3** mide enseguida el servidor elegido (antes de las mediciones programadas)
+y devuelve `success` (1 o 0), `download_mbps` y `upload_mbps` para los pasos siguientes: un «Continuar
+solo si» sobre `success`, un mensaje con las velocidades. Una medición fallida devuelve `success` = 0
+en lugar de un error, para que la escena pueda reaccionar.
+
+## Ejemplos de escenas
+
+- **Vigilar el PLC**: cuando «Velocidad bajo el umbral» se dispare para el adaptador del garaje, envíe
+  un mensaje «PLC lento» con la variable de la velocidad.
+- **NAS caído**: cuando «Servidor iperf3 inaccesible» se dispare para el NAS, envíe un mensaje de
+  Telegram con el motivo.
+- **Control nocturno**: cada noche a las 3:00, mida el Wi-Fi del despacho y envíe el resultado en un
+  mensaje.
+
+## Solución de problemas
+
+- **«servidor inaccesible»**: compruebe que `iperf3 -s` se ejecuta en el servidor, que su puerto (5201
+  por defecto) está abierto en su cortafuegos y que la dirección es correcta. Desde otro equipo,
+  `iperf3 -c <dirección>` debe funcionar.
+- **«servidor ocupado con otra prueba»**: un servidor iperf3 solo atiende a un cliente a la vez. La
+  integración lo reintenta tras 5 segundos; probablemente otro cliente (u otro Gladys) está midiendo
+  al mismo tiempo.
+- **Velocidades bajas en un enlace rápido**: suba los flujos paralelos a 4 y alargue la duración. El
+  propio equipo de Gladys (una Raspberry Pi, por ejemplo) puede ser el cuello de botella.
+- **Muchas pérdidas en UDP**: la tasa UDP supera lo que admite el enlace; bájela.
+- Más detalles con `LOG_LEVEL=debug` en los registros de la integración.
+
+## Límites
+
+- Una medición a la vez, los servidores uno tras otro: 10 servidores tardan unos minutos.
+- Una medición carga el enlace medido: mantenga un intervalo razonable en un Wi-Fi cargado.
+- Las velocidades son las del equipo de Gladys al servidor, no entre otros dos equipos.
+- El contenedor de Gladys funciona en una red en puente: un servidor IPv6 necesita IPv6 activado en
+  Docker.
+- Con «Nunca», los valores no cambian solos y Gladys puede mostrarlos como antiguos pasadas 48 horas.

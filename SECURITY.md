@@ -30,6 +30,11 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+The integration stores under `/data` only the last result of each server and the state of its
+scene triggers (`state.json`): no secret, no credential. It only opens outgoing connections to the
+iperf3 servers listed in its configuration, on their port (TCP, and UDP in UDP mode), with the
+`iperf3` client of the image; it never listens on a port and never starts an iperf3 server.
+
 Out of scope: Gladys Assistant itself (see its
-[security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+[security policy](https://github.com/GladysAssistant/Gladys/security/policy)), iperf3 itself (see
+[esnet/iperf](https://github.com/esnet/iperf)), and the iperf3 servers the integration talks to.

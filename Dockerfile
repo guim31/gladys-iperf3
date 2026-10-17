@@ -11,7 +11,8 @@
 FROM public.ecr.aws/docker/library/node:24-alpine
 
 # dumb-init: handles signals (SIGTERM) correctly for a graceful shutdown.
-RUN apk add --no-cache dumb-init
+# iperf3: the measurement client (the integration never starts a server).
+RUN apk add --no-cache dumb-init iperf3
 
 WORKDIR /app
 
