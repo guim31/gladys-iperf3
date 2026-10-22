@@ -1,6 +1,6 @@
 {
   "name": "gladys-iperf3",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Gladys Assistant integration: local network speed measured with iperf3 against your own servers.",
   "type": "module",
